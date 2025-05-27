@@ -1,6 +1,12 @@
 # 基础几何模块
 from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Dir, gp_Ax2, gp_Circ, gp_Cylinder, gp_Sphere, gp_Torus, gp_Pln
 
+# 修正版
+from OCC.Core.gp import (
+    gp_Pnt, gp_Dir, gp_Ax1, gp_Ax2,       # ← 加了 gp_Ax1
+    gp_Circ, gp_Vec, gp_Trsf
+)
+
 # 几何对象构建
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakeSolid
 

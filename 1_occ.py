@@ -1,6 +1,12 @@
 # 基础几何模块
 from OCC.Core.gp import gp_Pnt, gp_Vec, gp_Dir, gp_Ax2, gp_Circ, gp_Cylinder, gp_Sphere, gp_Torus, gp_Pln
 
+# 修正版
+from OCC.Core.gp import (
+    gp_Pnt, gp_Dir, gp_Ax1, gp_Ax2,       # ← 加了 gp_Ax1
+    gp_Circ, gp_Vec, gp_Trsf
+)
+
 # 几何对象构建
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace, BRepBuilderAPI_MakeSolid
 
@@ -39,47 +45,90 @@ from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_ModifyShape
 from OCC.Core.STEPControl import STEPControl_Writer, STEPControl_AsIs
 
 
-from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax2, gp_Circ, gp_Vec
-from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace
+from OCC.Core.gp import (gp_Pnt, gp_Dir, gp_Ax1, gp_Ax2, gp_Circ, gp_Vec, gp_Trsf)
+from OCC.Core.GC import GC_MakeArcOfCircle
+from OCC.Core.BRepBuilderAPI import (
+    BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire,
+    BRepBuilderAPI_MakeFace, BRepBuilderAPI_Transform
+)
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism
 from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
-from OCC.Core.TopoDS import TopoDS_Compound, TopoDS_Builder
-all_shapes = []  # 存储所有生成的 shape
+from OCC.Core.STEPControl import STEPControl_AsIs
+
+all_shapes = []  # 存储每个 part 的体
+wires = []
 edges = []
-circle = gp_Circ(gp_Ax2(gp_Pnt(0.0, 0.0, 0.0), gp_Dir(0.0, 0.0, 1.0)), 1.5875)
-edge = BRepBuilderAPI_MakeEdge(circle).Edge()
+p1 = gp_Pnt(0.0, 0.0, 0.0)
+p2 = gp_Pnt(56.25, 0.0, 0.0)
+edge = BRepBuilderAPI_MakeEdge(p1, p2).Edge()
 edges.append(edge)
-wire_maker = BRepBuilderAPI_MakeWire()
-for e in edges:
-    wire_maker.Add(e)
-wire = wire_maker.Wire()
-face = BRepBuilderAPI_MakeFace(wire).Face()
-extruded_shape = BRepPrimAPI_MakePrism(face, gp_Vec(0.0, 0.0, 1.0) * 0.3175).Shape()
-all_shapes.append(extruded_shape)
+p1 = gp_Pnt(56.25, 0.0, 0.0)
+p2 = gp_Pnt(56.25, 11.7225, 0.0)
+edge = BRepBuilderAPI_MakeEdge(p1, p2).Edge()
+edges.append(edge)
+p1 = gp_Pnt(56.25, 11.7225, 0.0)
+p2 = gp_Pnt(0.0, 11.7225, 0.0)
+edge = BRepBuilderAPI_MakeEdge(p1, p2).Edge()
+edges.append(edge)
+p1 = gp_Pnt(0.0, 11.7225, 0.0)
+p2 = gp_Pnt(0.0, 0.0, 0.0)
+edge = BRepBuilderAPI_MakeEdge(p1, p2).Edge()
+edges.append(edge)
+wire_mkr = BRepBuilderAPI_MakeWire()
+for _e in edges: wire_mkr.Add(_e)
+wires.append(wire_mkr.Wire())
 edges = []
-circle = gp_Circ(gp_Ax2(gp_Pnt(0.0, 0.0, 0.0), gp_Dir(0.0, 0.0, 1.0)), 1.27)
-edge = BRepBuilderAPI_MakeEdge(circle).Edge()
+circ = gp_Circ(gp_Ax2(gp_Pnt(2.8125, 5.8575, 0.0), gp_Dir(0,0,1)), 1.0050000000000001)
+edge = BRepBuilderAPI_MakeEdge(circ).Edge()
 edges.append(edge)
-wire_maker = BRepBuilderAPI_MakeWire()
-for e in edges:
-    wire_maker.Add(e)
-wire = wire_maker.Wire()
-face = BRepBuilderAPI_MakeFace(wire).Face()
-extruded_shape = BRepPrimAPI_MakePrism(face, gp_Vec(0.0, 0.0, 1.0) * 2.2225).Shape()
-all_shapes.append(extruded_shape)
+wire_mkr = BRepBuilderAPI_MakeWire()
+for _e in edges: wire_mkr.Add(_e)
+wires.append(wire_mkr.Wire())
 edges = []
-circle = gp_Circ(gp_Ax2(gp_Pnt(0.0, 0.0, 0.0), gp_Dir(0.0, 0.0, 1.0)), 0.9525)
-edge = BRepBuilderAPI_MakeEdge(circle).Edge()
+p1 = gp_Pnt(18.75, 2.3475, 0.0)
+p2 = gp_Pnt(37.5, 2.3475, 0.0)
+edge = BRepBuilderAPI_MakeEdge(p1, p2).Edge()
 edges.append(edge)
-wire_maker = BRepBuilderAPI_MakeWire()
-for e in edges:
-    wire_maker.Add(e)
-wire = wire_maker.Wire()
-face = BRepBuilderAPI_MakeFace(wire).Face()
+p1 = gp_Pnt(37.5, 2.3475, 0.0)
+p2 = gp_Pnt(41.017500000000005, 5.8575, 0.0)
+p3 = gp_Pnt(37.5, 9.375, 0.0)
+curve = GC_MakeArcOfCircle(p1, p2, p3).Value()
+edge  = BRepBuilderAPI_MakeEdge(curve).Edge()
+edges.append(edge)
+p1 = gp_Pnt(37.5, 9.375, 0.0)
+p2 = gp_Pnt(18.75, 9.375, 0.0)
+edge = BRepBuilderAPI_MakeEdge(p1, p2).Edge()
+edges.append(edge)
+p1 = gp_Pnt(18.75, 9.375, 0.0)
+p2 = gp_Pnt(15.232499999999998, 5.8575, 0.0)
+p3 = gp_Pnt(18.75, 2.3475, 0.0)
+curve = GC_MakeArcOfCircle(p1, p2, p3).Value()
+edge  = BRepBuilderAPI_MakeEdge(curve).Edge()
+edges.append(edge)
+wire_mkr = BRepBuilderAPI_MakeWire()
+for _e in edges: wire_mkr.Add(_e)
+wires.append(wire_mkr.Wire())
+edges = []
+circ = gp_Circ(gp_Ax2(gp_Pnt(53.4375, 5.8875, 0.0), gp_Dir(0,0,1)), 1.0050000000000001)
+edge = BRepBuilderAPI_MakeEdge(circ).Edge()
+edges.append(edge)
+wire_mkr = BRepBuilderAPI_MakeWire()
+for _e in edges: wire_mkr.Add(_e)
+wires.append(wire_mkr.Wire())
+outer = wires[0]
+face_mkr = BRepBuilderAPI_MakeFace(outer)
+for hole_w in wires[1:]: face_mkr.Add(hole_w)
+face = face_mkr.Face()
+extruded = BRepPrimAPI_MakePrism(face, gp_Vec(0,0,1)*1.5599999999999998).Shape()
+trsf = gp_Trsf(); trsf.SetTranslation(gp_Vec(0.0,0.0,0.0))
+rot  = gp_Trsf(); rot.SetRotation(gp_Ax1(gp_Pnt(0,0,0), gp_Dir(0,0,1)), 0.0)
+rot.Multiply(trsf)
+extruded = BRepBuilderAPI_Transform(extruded, rot, True).Shape()
+all_shapes.append(extruded)
 if all_shapes:
     result_shape = all_shapes[0]
-    for shape in all_shapes[1:]:
-        result_shape = BRepAlgoAPI_Fuse(result_shape, shape).Shape()
+    for shp in all_shapes[1:]:
+        result_shape = BRepAlgoAPI_Fuse(result_shape, shp).Shape()
 else:
     result_shape = None
 

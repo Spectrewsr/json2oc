@@ -6,85 +6,138 @@ from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse
 from OCC.Core.STEPControl import STEPControl_Writer
 from OCC.Core.TopoDS import TopoDS_Compound, TopoDS_Builder
 
-def generate_occ_code_from_json(json_data):
-    entities = json_data.get("entities", {})
-    sequence = json_data.get("sequence", [])
+def generate_occ_code_from_json_v2(json_data, unit_scale=100.0):
+    """新版 JSON ➞ PythonOCC 代码字符串数组，支持 line/arc/circle、多环/孔洞"""
+    parts = json_data.get("parts", {})
 
-    occ_code = []
-    occ_code.append("from OCC.Core.gp import gp_Pnt, gp_Dir, gp_Ax2, gp_Circ, gp_Vec")
-    occ_code.append("from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace")
-    occ_code.append("from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism")
-    occ_code.append("from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse")
-    occ_code.append("from OCC.Core.TopoDS import TopoDS_Compound, TopoDS_Builder")
+    occ = [
+        # ---------- 基础 import ----------
+        "from OCC.Core.gp import (gp_Pnt, gp_Dir, gp_Ax1, gp_Ax2, gp_Circ, gp_Vec, gp_Trsf)",
+        "from OCC.Core.GC import GC_MakeArcOfCircle",
+        "from OCC.Core.BRepBuilderAPI import (",
+        "    BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire,",
+        "    BRepBuilderAPI_MakeFace, BRepBuilderAPI_Transform",
+        ")",
+        "from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakePrism",
+        "from OCC.Core.BRepAlgoAPI import BRepAlgoAPI_Fuse",
+        "from OCC.Core.STEPControl import STEPControl_AsIs",
+        "",
+        "all_shapes = []  # 存储每个 part 的体",
+    ]
 
-    occ_code.append("all_shapes = []  # 存储所有生成的 shape")
+    # ---------- 遍历 parts ----------
+    for part_name, part in parts.items():
+        extrusion = part.get('extrusion', {})
+        sketch    = part.get('sketch', {})
+        coord_sys = part.get('coordinate_system', {})
 
-    for item in sequence:
-        entity_type = item.get("type")
-        entity_id = item.get("entity")
+        scale     = extrusion.get('sketch_scale', 1.0)
+        depth_pos = extrusion.get('extrude_depth_towards_normal', 0.0) * unit_scale
+        depth_neg = extrusion.get('extrude_depth_opposite_normal', 0.0) * unit_scale
 
-        if entity_type == "Sketch":
-            sketch = entities.get(entity_id)
-            if sketch:
-                profiles = sketch.get("profiles", {})
-                for profile_name, profile in profiles.items():
-                    loops = profile.get("loops", [])
-                    occ_code.append("edges = []")
-                    for loop in loops:
-                        if loop.get("is_outer"):
-                            profile_curves = loop.get("profile_curves", [])
-                            for curve in profile_curves:
-                                if curve.get("type") == "Circle3D":
-                                    center = curve.get("center_point", {})
-                                    radius = curve.get("radius", 0.0) * 100
-                                    occ_code.append(f"circle = gp_Circ(gp_Ax2(gp_Pnt({center.get('x', 0.0)*100}, {center.get('y', 0.0)*100}, {center.get('z', 0.0)*100}), gp_Dir(0.0, 0.0, 1.0)), {radius})")
-                                    occ_code.append("edge = BRepBuilderAPI_MakeEdge(circle).Edge()")
-                                    occ_code.append("edges.append(edge)")
-                                elif curve.get("type") == "Line3D":
-                                    start = curve.get("start_point", {})
-                                    end = curve.get("end_point", {})
-                                    start_x = start.get('x', 0.0) * 100
-                                    start_y = start.get('y', 0.0) * 100
-                                    start_z = start.get('z', 0.0) * 100
-                                    end_x = end.get('x', 0.0) * 100
-                                    end_y = end.get('y', 0.0) * 100
-                                    end_z = end.get('z', 0.0) * 100
-                                    occ_code.append(f"p1 = gp_Pnt({start_x}, {start_y}, {start_z})")
-                                    occ_code.append(f"p2 = gp_Pnt({end_x}, {end_y}, {end_z})")
-                                    occ_code.append("edge = BRepBuilderAPI_MakeEdge(p1, p2).Edge()")
-                                    occ_code.append("edges.append(edge)")
+        for face_key, face in sketch.items():          # face_1 …
+            occ.append("wires = []")
+            # ------ 每个 loop → wire ------
+            for loop_key, loop in face.items():        # loop_1 …
+                occ.append("edges = []")
+                for elem_key, elem in loop.items():
+                    # ---------- Line ----------
+                    if elem_key.startswith('line_'):
+                        sx, sy = elem['Start Point']; ex, ey = elem['End Point']
+                        p1x = sx * scale * unit_scale
+                        p1y = sy * scale * unit_scale
+                        p2x = ex * scale * unit_scale
+                        p2y = ey * scale * unit_scale
+                        occ += [
+                            f"p1 = gp_Pnt({p1x}, {p1y}, 0.0)",
+                            f"p2 = gp_Pnt({p2x}, {p2y}, 0.0)",
+                            "edge = BRepBuilderAPI_MakeEdge(p1, p2).Edge()",
+                            "edges.append(edge)",
+                        ]
 
-                    occ_code.append("wire_maker = BRepBuilderAPI_MakeWire()")
-                    occ_code.append("for e in edges:")
-                    occ_code.append("    wire_maker.Add(e)")
-                    occ_code.append("wire = wire_maker.Wire()")
-                    occ_code.append("face = BRepBuilderAPI_MakeFace(wire).Face()")
+                    # ---------- Arc (三点) ----------
+                    elif elem_key.startswith('arc_'):
+                        sx, sy = elem['Start Point']
+                        mx, my = elem['Mid Point']
+                        ex, ey = elem['End Point']
+                        pts = [
+                            (sx, sy, 'p1'),
+                            (mx, my, 'p2'),
+                            (ex, ey, 'p3'),
+                        ]
+                        for x, y, var in pts:
+                            occ.append(f"{var} = gp_Pnt({x*scale*unit_scale}, {y*scale*unit_scale}, 0.0)")
+                        occ += [
+                            "curve = GC_MakeArcOfCircle(p1, p2, p3).Value()",
+                            "edge  = BRepBuilderAPI_MakeEdge(curve).Edge()",
+                            "edges.append(edge)",
+                        ]
 
-        elif entity_type == "ExtrudeFeature":
-            extrude_feature = entities.get(entity_id)
-            if extrude_feature:
-                extent_type = extrude_feature.get("extent_type", "OneSideFeatureExtentType")
-                extent_one = extrude_feature.get("extent_one", {}).get("distance", {}).get("value", 0.0) * 100
-                extent_two = extrude_feature.get("extent_two", {}).get("distance", {}).get("value", 0.0) * 100
+                    # ---------- Circle ----------
+                    elif elem_key.startswith('circle_'):
+                        cx, cy = elem['Center']; r = elem['Radius']
+                        cx *= scale * unit_scale
+                        cy *= scale * unit_scale
+                        r  *= scale * unit_scale
+                        occ += [
+                            f"circ = gp_Circ(gp_Ax2(gp_Pnt({cx}, {cy}, 0.0), gp_Dir(0,0,1)), {r})",
+                            "edge = BRepBuilderAPI_MakeEdge(circ).Edge()",
+                            "edges.append(edge)",
+                        ]
 
-                if extent_type == "OneSideFeatureExtentType":
-                    occ_code.append(f"extruded_shape = BRepPrimAPI_MakePrism(face, gp_Vec(0.0, 0.0, 1.0) * {extent_one}).Shape()")
-                elif extent_type == "TwoSideFeatureExtentType":
-                    occ_code.append(f"extrude_one = BRepPrimAPI_MakePrism(face, gp_Vec(0.0, 0.0, 1.0) * {extent_one}).Shape()")
-                    occ_code.append(f"extrude_two = BRepPrimAPI_MakePrism(face, gp_Vec(0.0, 0.0, -1.0) * {extent_two}).Shape()")
-                    occ_code.append("extruded_shape = BRepAlgoAPI_Fuse(extrude_one, extrude_two).Shape()")
+                    else:
+                        occ.append(f'# 未识别元素 {elem_key}, 已跳过')
 
-                occ_code.append("all_shapes.append(extruded_shape)")
+                # ------ edges → wire ------
+                occ += [
+                    "wire_mkr = BRepBuilderAPI_MakeWire()",
+                    "for _e in edges: wire_mkr.Add(_e)",
+                    "wires.append(wire_mkr.Wire())",
+                ]
 
-    # 合并所有 shapes（如果有多个）
-    occ_code.append("if all_shapes:")
-    occ_code.append("    result_shape = all_shapes[0]")
-    occ_code.append("    for shape in all_shapes[1:]:")
-    occ_code.append("        result_shape = BRepAlgoAPI_Fuse(result_shape, shape).Shape()")
-    occ_code.append("else:")
-    occ_code.append("    result_shape = None")
+            # ------ wires → face (孔洞支持) ------
+            occ += [
+                "outer = wires[0]",
+                "face_mkr = BRepBuilderAPI_MakeFace(outer)",
+                "for hole_w in wires[1:]: face_mkr.Add(hole_w)",
+                "face = face_mkr.Face()",
+            ]
 
-    return occ_code
+            # ------ 拉伸 ------
+            if depth_neg == 0:
+                occ.append(f"extruded = BRepPrimAPI_MakePrism(face, gp_Vec(0,0,1)*{depth_pos}).Shape()")
+            else:
+                occ += [
+                    f"pos = BRepPrimAPI_MakePrism(face, gp_Vec(0,0,1)*{depth_pos}).Shape()",
+                    f"neg = BRepPrimAPI_MakePrism(face, gp_Vec(0,0,-1)*{depth_neg}).Shape()",
+                    "extruded = BRepAlgoAPI_Fuse(pos, neg).Shape()",
+                ]
+
+            # ------ 变换 ------
+            euler = coord_sys.get('Euler Angles', [0,0,0])
+            trans = coord_sys.get('Translation Vector', [0,0,0])
+            tx, ty, tz = [t*unit_scale for t in trans]
+
+            occ += [
+                "trsf = gp_Trsf(); trsf.SetTranslation(gp_Vec({},{},{}))".format(tx, ty, tz),
+                "rot  = gp_Trsf(); rot.SetRotation(gp_Ax1(gp_Pnt(0,0,0), gp_Dir(0,0,1)), {})".format(euler[2]),
+                "rot.Multiply(trsf)",
+                "extruded = BRepBuilderAPI_Transform(extruded, rot, True).Shape()",
+                "all_shapes.append(extruded)",
+            ]
+
+    # ---------- Fuse all parts ----------
+    occ += [
+        "if all_shapes:",
+        "    result_shape = all_shapes[0]",
+        "    for shp in all_shapes[1:]:",
+        "        result_shape = BRepAlgoAPI_Fuse(result_shape, shp).Shape()",
+        "else:",
+        "    result_shape = None",
+    ]
+    return occ
+
+
 
 def save_occ_code_to_file(occ_code, filename='1_occ.py', step_filename='output.step'):
     with open('from_import.py', 'r', encoding='utf-8') as file:
@@ -117,10 +170,10 @@ def save_occ_code_to_file(occ_code, filename='1_occ.py', step_filename='output.s
     print(f"PythonOCC code has been saved to {filename} and STEP file saved as {step_filename}")
 
 def main():
-    with open('00000272.json', 'r') as file:
+    with open('00000329.json', 'r') as file:
         json_data = json.load(file)
 
-    occ_code = generate_occ_code_from_json(json_data)
+    occ_code = generate_occ_code_from_json_v2(json_data)
     save_occ_code_to_file(occ_code)
 
 if __name__ == '__main__':
