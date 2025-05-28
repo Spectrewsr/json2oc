@@ -104,14 +104,21 @@ def generate_occ_code_from_json_v2(json_data, unit_scale=100.0):
             ]
 
             # ------ 拉伸 ------
-            if depth_neg == 0:
+            # 拉伸部分的修改
+            if depth_pos == 0 and depth_neg == 0:
+                occ.append("# No extrusion, both depth_pos and depth_neg are 0")
+            elif depth_pos != 0 and depth_neg == 0:
                 occ.append(f"extruded = BRepPrimAPI_MakePrism(face, gp_Vec(0,0,1)*{depth_pos}).Shape()")
+            elif depth_pos == 0 and depth_neg != 0:
+                occ.append(f"extruded = BRepPrimAPI_MakePrism(face, gp_Vec(0,0,-1)*{depth_neg}).Shape()")
             else:
+                # depth_pos != 0 and depth_neg != 0
                 occ += [
                     f"pos = BRepPrimAPI_MakePrism(face, gp_Vec(0,0,1)*{depth_pos}).Shape()",
                     f"neg = BRepPrimAPI_MakePrism(face, gp_Vec(0,0,-1)*{depth_neg}).Shape()",
                     "extruded = BRepAlgoAPI_Fuse(pos, neg).Shape()",
                 ]
+
 
             # ------ 变换 ------
             euler = coord_sys.get('Euler Angles', [0,0,0])
@@ -170,7 +177,7 @@ def save_occ_code_to_file(occ_code, filename='1_occ.py', step_filename='output.s
     print(f"PythonOCC code has been saved to {filename} and STEP file saved as {step_filename}")
 
 def main():
-    with open('00000329.json', 'r') as file:
+    with open('00000073.json', 'r') as file:
         json_data = json.load(file)
 
     occ_code = generate_occ_code_from_json_v2(json_data)
