@@ -60,6 +60,7 @@ def generate_occ_code_from_json_v2(json_data, unit_scale=100.0):
                         sx, sy = elem['Start Point']
                         mx, my = elem['Mid Point']
                         ex, ey = elem['End Point']
+
                         pts = [
                             (sx, sy, 'p1'),
                             (mx, my, 'p2'),
@@ -67,9 +68,16 @@ def generate_occ_code_from_json_v2(json_data, unit_scale=100.0):
                         ]
                         for x, y, var in pts:
                             occ.append(f"{var} = gp_Pnt({x*scale*unit_scale}, {y*scale*unit_scale}, 0.0)")
+
+                        # 先试着做圆弧；如果三点共线 IsDone()==False，就用直线
                         occ += [
-                            "curve = GC_MakeArcOfCircle(p1, p2, p3).Value()",
-                            "edge  = BRepBuilderAPI_MakeEdge(curve).Edge()",
+                            "arc_builder = GC_MakeArcOfCircle(p1, p2, p3)",
+                            "if arc_builder.IsDone():",
+                            "    curve = arc_builder.Value()",
+                            "    edge  = BRepBuilderAPI_MakeEdge(curve).Edge()",
+                            "else:",
+                            "    # 三点共线，退化为直线 p1-p3",
+                            "    edge  = BRepBuilderAPI_MakeEdge(p1, p3).Edge()",
                             "edges.append(edge)",
                         ]
 
@@ -177,7 +185,7 @@ def save_occ_code_to_file(occ_code, filename='1_occ.py', step_filename='output.s
     print(f"PythonOCC code has been saved to {filename} and STEP file saved as {step_filename}")
 
 def main():
-    with open('00000073.json', 'r') as file:
+    with open('00001272.json', 'r') as file:
         json_data = json.load(file)
 
     occ_code = generate_occ_code_from_json_v2(json_data)
